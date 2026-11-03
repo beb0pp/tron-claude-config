@@ -154,7 +154,7 @@ function linkSkills(home, toolDir, names, { log = () => {} } = {}) {
     const { foreignSkill } = require('../lib/runtime');
     if (foreignSkill(path.join(paths.home(), '.agents', 'skills', name), name)) continue;
     if (stat && !stat.isSymbolicLink() && !(stat.isDirectory() && ownSkillDir(home, dest, name))) {
-      log(`WARN: ${dest.replace(paths.home(), '~')} holds files exonous did not write — left as is (not linked); move them, then rerun`);
+      log(`WARN: ${dest.replace(paths.home(), '~').replace(/\\/g, '/')} holds files exonous did not write — left as is (not linked); move them, then rerun`);
       continue;
     }
     home.link(path.join(paths.home(), '.agents', 'skills', name), dest);

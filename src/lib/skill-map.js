@@ -42,7 +42,7 @@ function skillRows(tool) {
     const mine = forms.filter((f) => f.kind === kind);
     if (!mine.length) return [];
     const missing = mine.filter((f) => !fs.existsSync(f.file)).map((f) => f.name);
-    const where = path.dirname(kind === 'skill' ? path.dirname(mine[0].file) : mine[0].file).replace(paths.home(), '~');
+    const where = path.dirname(kind === 'skill' ? path.dirname(mine[0].file) : mine[0].file).replace(paths.home(), '~').replace(/\\/g, '/');
     return [{
       name: `${TOOLS[tool].label}: ${WHERE[kind]} (${mine.length - missing.length}/${mine.length} in ${where}/)`,
       ok: !missing.length,
