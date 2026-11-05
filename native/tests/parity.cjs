@@ -14,7 +14,7 @@ const home = path.join(temporary, 'home');
 const repo = path.join(temporary, 'repo');
 fs.mkdirSync(home, { mode: 0o700 });
 fs.mkdirSync(repo);
-const env = { ...process.env, EXONOUS_HOME: home, HOME: home, USERPROFILE: home, EXONOUS_NO_UPDATE: '1', EXONOUS_RULES_REMINDER: '1', GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_NOSYSTEM: '1' };
+const env = { ...process.env, EXONOUS_HOME: home, HOME: home, USERPROFILE: home, EXONOUS_NO_UPDATE: '1', EXONOUS_RULES_REMINDER: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
 
 function native(args, input) {
   const out = spawnSync(binary, args, { cwd: repo, env, input: input && JSON.stringify(input), encoding: 'utf8' });

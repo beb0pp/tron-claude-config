@@ -268,16 +268,18 @@ fn migration_conflicts_and_hostile_journal_preserve_every_original() {
         vault::read_config(home.path()).unwrap()["vault"],
         json!(source)
     );
-    write(&home.path().join(".claude/exonous/state/vault-consolidation.json"), json!({"v":1,"phase":"cleanup","oldVault":source,"target":fs::canonicalize(&target).unwrap(),"sources":[fs::canonicalize(&source).unwrap()],"entries":[{"source":fs::canonicalize(&source).unwrap(),"relative":"../personal.md","size":0,"hash":"x","dev":0,"ino":0,"mtimeMs":0}]}).to_string());
-    let rejected = vault::consolidate(home.path(), home.path(), Some(&target), false).unwrap();
-    assert_eq!(rejected["status"], "blocked", "{rejected}");
-    assert!(
-        rejected["errors"][0]
-            .as_str()
-            .unwrap()
-            .contains("invalid vault path"),
-        "{rejected}"
-    );
+    for relative in ["../personal.md", "/personal.md", ""] {
+        write(&home.path().join(".claude/exonous/state/vault-consolidation.json"), json!({"v":1,"phase":"cleanup","oldVault":source,"target":fs::canonicalize(&target).unwrap(),"sources":[fs::canonicalize(&source).unwrap()],"entries":[{"source":fs::canonicalize(&source).unwrap(),"relative":relative,"size":0,"hash":"x","dev":0,"ino":0,"mtimeMs":0}]}).to_string());
+        let rejected = vault::consolidate(home.path(), home.path(), Some(&target), false).unwrap();
+        assert_eq!(rejected["status"], "blocked", "{rejected}");
+        assert!(
+            rejected["errors"][0]
+                .as_str()
+                .unwrap()
+                .contains("invalid vault path"),
+            "{rejected}"
+        );
+    }
     assert_eq!(
         fs::read_to_string(target.join("repo/memory/doc/a.md")).unwrap(),
         "different"
@@ -319,12 +321,19 @@ fn migration_rejects_nested_targets_and_symlink_aliases() {
 
 #[test]
 fn node_compatible_cleanup_journal_resumes_and_reverifies_already_removed_originals() {
-    for corrupt in [false, true] {
+    for (corrupt, changed_mtime) in [(false, false), (true, false), (false, true)] {
         let home = tempfile::tempdir().unwrap();
         let source = home.path().join("custom-old");
         let target = home.path().join("central");
         write(&source.join("repo/memory/doc/a.md"), "first");
         write(&source.join("repo/sessions/b.md"), "second");
+        let modified = std::time::UNIX_EPOCH + std::time::Duration::new(1_700_000_000, 900_028);
+        fs::File::options()
+            .write(true)
+            .open(source.join("repo/sessions/b.md"))
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
         fs::create_dir(&target).unwrap();
         configured(home.path(), &source);
         let preview = vault::consolidate(home.path(), home.path(), Some(&target), true).unwrap();
@@ -345,13 +354,31 @@ fn node_compatible_cleanup_journal_resumes_and_reverifies_already_removed_origin
         if corrupt {
             write(&target.join("repo/memory/doc/a.md"), "corrupted");
         }
+        if changed_mtime {
+            fs::File::options()
+                .write(true)
+                .open(source.join("repo/sessions/b.md"))
+                .unwrap()
+                .set_modified(modified + std::time::Duration::from_millis(1))
+                .unwrap();
+        }
         let resumed = vault::consolidate(home.path(), home.path(), Some(&target), false).unwrap();
         assert_eq!(
             resumed["status"],
-            if corrupt { "blocked" } else { "complete" },
+            if corrupt || changed_mtime {
+                "blocked"
+            } else {
+                "complete"
+            },
             "{resumed}"
         );
-        assert_eq!(source.join("repo/sessions/b.md").exists(), corrupt);
+        assert_eq!(
+            source.join("repo/sessions/b.md").exists(),
+            corrupt || changed_mtime
+        );
+        if changed_mtime {
+            assert_eq!(resumed["errors"], json!(["journal source changed"]));
+        }
         assert_eq!(vault::read_config(home.path()).unwrap()["memory"], false);
     }
 }
@@ -426,7 +453,7 @@ fn graph_links_tags_folders_code_and_escaped_html_are_written_offline() {
         "---\ntags: [design, 'Team']\n---\n[[B]] [[missing]] [[photo.png]] #rust\n`[[ignored]]`\n```js\n[[hidden]]\n```\n",
     );
     write(&root.join("repo/B.md"), "[[A]] #rust");
-    write(&root.join("evil</script>.md"), "content");
+    write(&root.join("evil.md"), "[[evil</script>]]");
     configured(home.path(), &root);
     let result = vault::command(home.path(), home.path(), &["graph".into()]).unwrap();
     assert!(result.contains("graph:"));

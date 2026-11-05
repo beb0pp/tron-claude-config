@@ -776,6 +776,14 @@ fn consolidate_inner(
             if !sources.contains(&entry.source) || !entry.fingerprint.mtime_ms.is_finite() {
                 return Err("invalid journal source".into());
             }
+            if entry.relative.as_os_str().is_empty()
+                || entry
+                    .relative
+                    .components()
+                    .any(|component| !matches!(component, Component::Normal(_)))
+            {
+                return Err("invalid vault path".into());
+            }
             let file = entry.source.join(&entry.relative);
             let destination = target_real.join(&entry.relative);
             no_symlink_children(&entry.source, &file)?;

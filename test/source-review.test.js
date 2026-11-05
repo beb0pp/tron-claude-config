@@ -211,15 +211,15 @@ test('VPN uses private temp files, probes before success and stops only its own 
     if (args[1] === 'openvpn') {
       const profile = args[args.indexOf('--config') + 1];
       own = path.dirname(profile);
-      assert.equal(fs.statSync(profile).mode & 0o777, process.platform === 'win32' ? 0o666 : 0o600);
-      assert.equal(fs.statSync(own).mode & 0o777, process.platform === 'win32' ? 0o777 : 0o700);
-      assert.equal(fs.readFileSync(profile, 'utf8'), 'client\ndev tun\nremote gateway.invalid 443\n');
       fs.writeFileSync(path.join(own, 'pid'), '12345');
       fs.writeFileSync(path.join(own, 'vpn.log'), 'Initialization Sequence Completed\n');
     }
   };
   let probes = 0;
   await startVpn({ env: { RUNNER_TEMP: dir, EXONOUS_REVIEW_VPN_PROFILE: 'client\ndev tun\nremote gateway.invalid 443\n', EXONOUS_REVIEW_BASE_URL: 'https://gateway.invalid/v1' }, run, probe: async () => { probes++; return true; }, delay: async () => {} });
+  assert.equal(fs.statSync(path.join(own, 'client.ovpn')).mode & 0o777, process.platform === 'win32' ? 0o666 : 0o600);
+  assert.equal(fs.statSync(own).mode & 0o777, process.platform === 'win32' ? 0o666 : 0o700);
+  assert.equal(fs.readFileSync(path.join(own, 'client.ovpn'), 'utf8'), 'client\ndev tun\nremote gateway.invalid 443\n');
   assert.equal(probes, 1);
   assert.ok(commands[0].includes('--script-security'));
   await stopVpn({ env: { RUNNER_TEMP: dir }, run, processArgs: () => ['openvpn', '--config', path.join(own, 'client.ovpn'), '--writepid', path.join(own, 'pid')], delay: async () => {} });

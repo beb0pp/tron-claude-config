@@ -1,6 +1,6 @@
 [package]
 name = "exonous"
-version = "2.10.1"
+version = "2.10.2"
 edition = "2024"
 rust-version = "1.88"
 publish = false
@@ -15,7 +15,7 @@ path = "native/src/main.rs"
 
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.149", features = ["preserve_order"] }
+serde_json = { version = "1.0.149", features = ["preserve_order", "float_roundtrip"] }
 regex = "1.12.3"
 sha1 = "0.10.6"
 sha2 = "0.10.9"
