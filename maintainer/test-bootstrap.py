@@ -52,7 +52,8 @@ function Get-ReleaseResponse([string] $Url, [string] $Method) {
 }
 '@
 $Source = $Source.Remove($Transport.Extent.StartOffset, $Transport.Extent.EndOffset - $Transport.Extent.StartOffset).Insert($Transport.Extent.StartOffset, $Mock)
-$Forwarded = [IO.File]::ReadAllText($env:FIXTURE_ARGUMENTS) | ConvertFrom-Json
+[string[]] $Forwarded = [IO.File]::ReadAllText($env:FIXTURE_ARGUMENTS) | ConvertFrom-Json
+if ($null -eq $Forwarded) { $Forwarded = @() }
 '''
 
 
