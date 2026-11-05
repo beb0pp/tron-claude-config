@@ -7,10 +7,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const fx = require('./helpers/adapter-fixture');
+const { vaultContext } = require('../src/vault-cli');
 fx.useFixtureHome();
 const handoff = () => require('../src/lib/handoff');
 const body = (k = 'full') => ({ v: 1, k, g: [['work', 'state', 'implemented'], ['work', 'proof', 'node --test: passed'], ['work', 'next', 'review']] });
-const opts = () => ({ cwd: fx.home(), ctx: { platform: 'linux', homedir: fx.home(), isWsl: false } });
+const opts = () => ({ cwd: fx.home(), ctx: vaultContext({ platform: process.platform === 'win32' ? 'win32' : 'linux', homedir: fx.home(), isWsl: false }) });
+const REGISTRY_DIR = process.platform === 'win32' ? ['AppData', 'Roaming', 'obsidian'] : ['.config', 'obsidian'];
 function vault(name) { const p = fx.home(name); fs.mkdirSync(p, { recursive: true }); return p; }
 function config(value) { fx.write(value, '.claude', 'exonous', 'config.json'); }
 
@@ -33,7 +35,7 @@ test('missing explicit roots stay observable without redirect; existing registry
   assert.equal(fs.existsSync(fx.home('missing')), false);
   assert.equal(fs.existsSync(fx.home('exonous-vault')), false);
   const root = vault('obsidian');
-  fx.write({ vaults: { x: { path: root, open: true } } }, '.config', 'obsidian', 'obsidian.json');
+  fx.write({ vaults: { x: { path: root, open: true } } }, ...REGISTRY_DIR, 'obsidian.json');
   config({});
   assert.equal(handoff().save(body(), opts()).vault, root);
 });
@@ -113,7 +115,7 @@ test('legacy session roots are migration inputs, not destinations', () => {
   fx.write({ sessionsVault: legacy }, '.agents', 'skills', 'session-handoff', 'config.json');
   assert.deepEqual(handoff().save(body(), opts()), { status: 'not-saved', reason: 'no-vault' });
   const registered = vault(path.join('elsewhere', 'exonous-vault'));
-  fx.write({ vaults: { a: { path: registered } } }, '.config', 'obsidian', 'obsidian.json');
+  fx.write({ vaults: { a: { path: registered } } }, ...REGISTRY_DIR, 'obsidian.json');
   config({ vault: registered });
   assert.equal(handoff().save(body(), opts()).vault, registered);
 });

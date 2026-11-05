@@ -6,9 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const fx = require('./helpers/adapter-fixture');
-const { current } = require('../src/vault-cli');
+const { current, vaultContext } = require('../src/vault-cli');
 fx.useFixtureHome();
-const ctx = () => ({ platform: 'linux', homedir: fx.home(), isWsl: false });
+const ctx = () => vaultContext({ platform: process.platform === 'win32' ? 'win32' : 'linux', homedir: fx.home(), isWsl: false });
+const REGISTRY_DIR = process.platform === 'win32' ? ['AppData', 'Roaming', 'obsidian'] : ['.config', 'obsidian'];
 function root(name) { const p = fx.home(name); fs.mkdirSync(p, { recursive: true }); return p; }
 function write(base, relative, content = 'fixture') { const p = path.join(base, relative); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, content); return p; }
 const run = (options = {}) => require('../src/lib/vault-consolidation').consolidate({ ctx: ctx(), ...options });
@@ -20,7 +21,7 @@ test('canonical current stays on persisted root until successful consolidation c
   fx.write({ vault: central }, '.claude', 'exonous', 'config.json');
   assert.equal(current(ctx()).path, central);
   fx.write({ vault: fallback }, '.claude', 'exonous', 'config.json');
-  fx.write({ vaults: { x: { path: central, open: true } } }, '.config', 'obsidian', 'obsidian.json');
+  fx.write({ vaults: { x: { path: central, open: true } } }, ...REGISTRY_DIR, 'obsidian.json');
   assert.equal(current(ctx()).path, fallback);
   assert.equal(run({ dryRun: true }).target, central);
   assert.equal(run().status, 'complete');
