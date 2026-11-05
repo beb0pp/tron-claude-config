@@ -125,6 +125,7 @@ shutil.copyfile(root/url.rsplit("/",1)[-1],destination)
             self.env["FIXTURE_RELEASE"] = RELEASE
             self.env["FIXTURE_BOOTSTRAP"] = str(ROOT / "install.ps1")
             self.env["TEMP"] = self.env["TMP"] = str(self.staging)
+            (self.network / "tar.exe").write_bytes(candidate)
             self.driver = self.work / "transport.ps1"
             self.driver.write_text(POWERSHELL_TRANSPORT + "\n$Patched = Join-Path ([IO.Path]::GetDirectoryName($env:FIXTURE_ARGUMENTS)) 'fixture-bootstrap.ps1'\n[IO.File]::WriteAllText($Patched, $Source)\n& $Patched @Forwarded\nexit $LASTEXITCODE\n", encoding="utf-8")
         self.publish()

@@ -166,7 +166,10 @@ try {
     $Architecture = $env:PROCESSOR_ARCHITECTURE
     if ($env:PROCESSOR_ARCHITEW6432) { $Architecture = $env:PROCESSOR_ARCHITEW6432 }
     if ($env:OS -ne 'Windows_NT' -or $Architecture -ne 'AMD64') { throw 'no native release bundle for this platform' }
-    if (-not (Get-Command tar.exe -ErrorAction SilentlyContinue)) { throw 'Windows tar.exe is required' }
+    $SystemDirectory = 'System32'
+    if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) { $SystemDirectory = 'Sysnative' }
+    $Tar = Join-Path (Join-Path ([Environment]::GetFolderPath('Windows')) $SystemDirectory) 'tar.exe'
+    if (-not (Test-Path -LiteralPath $Tar -PathType Leaf)) { throw 'Windows system tar.exe is required' }
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $Stage = Join-Path ([IO.Path]::GetTempPath()) ('exonous-install-' + [Guid]::NewGuid().ToString('N'))
     $Security = New-Object System.Security.AccessControl.DirectorySecurity
@@ -209,7 +212,7 @@ try {
     Test-ReleaseArchive $Raw
     $Bundle = Join-Path $Stage 'bundle'
     [IO.Directory]::CreateDirectory($Bundle) | Out-Null
-    & tar.exe -xf $Raw -C $Bundle
+    & $Tar -xf $Raw -C $Bundle
     if ($LASTEXITCODE -ne 0) { throw 'cannot extract verified release archive' }
     $Candidate = Join-Path $Bundle 'exonous.exe'
     $env:EXONOUS_ASSETS = Join-Path $Bundle 'assets'
