@@ -114,7 +114,7 @@ pub fn ensure_private_dir(home: &Path, dir: &Path) -> Result<()> {
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let mut builder = fs::DirBuilder::new();
+                let builder = &mut fs::DirBuilder::new();
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::DirBuilderExt;

@@ -70,17 +70,16 @@ pub fn verify(
 ) -> Result<()> {
     let file = path(home, kind, cwd)?;
     runtime::ensure_private_dir(home, file.parent().ok_or("invalid token path")?)?;
-    if let Ok(meta) = fs::symlink_metadata(&file) {
-        if !meta.is_file() {
-            return Err("invalid".into());
-        }
+    match fs::symlink_metadata(&file) {
+        Ok(meta) if !meta.is_file() => return Err("invalid".into()),
         #[cfg(unix)]
-        {
+        Ok(meta) => {
             use std::os::unix::fs::MetadataExt;
             if meta.uid() != unsafe { libc::geteuid() } || meta.mode() & 0o077 != 0 {
                 return Err("invalid".into());
             }
         }
+        _ => {}
     }
     let claim = if consume {
         let claim = file.with_extension(format!("{}.claim", runtime::nonce()));

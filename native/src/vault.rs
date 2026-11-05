@@ -147,17 +147,21 @@ pub fn wsl_path(raw: &str, mount: &Path, distro: Option<&str>) -> String {
         .get_or_init(|| Regex::new(r"^([A-Za-z]):(?:[\\/](.*))?$").unwrap())
         .captures(raw)
     {
-        let root = mount.join(found[1].to_lowercase());
-        return root
-            .join(
-                found
-                    .get(2)
-                    .map_or("", |value| value.as_str())
-                    .replace('\\', "/"),
-            )
-            .to_string_lossy()
-            .trim_end_matches('/')
-            .to_owned();
+        let root = format!(
+            "{}/{}",
+            mount.to_string_lossy().trim_end_matches('/'),
+            found[1].to_lowercase()
+        );
+        let tail = found
+            .get(2)
+            .map_or("", |value| value.as_str())
+            .replace('\\', "/");
+        let path = if tail.starts_with('/') {
+            tail
+        } else {
+            format!("{root}/{tail}")
+        };
+        return path.trim_end_matches('/').to_owned();
     }
     if let Some(found) = UNC
         .get_or_init(|| {

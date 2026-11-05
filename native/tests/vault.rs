@@ -472,6 +472,15 @@ fn windows_and_wsl_paths_map_only_the_current_distro() {
         vault::wsl_path("D:/Notes", Path::new("/windows"), None),
         "/windows/d/Notes"
     );
+    for raw in ["C:", "C:\\", "C:/"] {
+        assert_eq!(vault::wsl_path(raw, Path::new("/mnt/"), None), "/mnt/c");
+        assert_eq!(vault::wsl_path(raw, Path::new("/"), None), "/c");
+    }
+    assert_eq!(
+        vault::wsl_path("C:/Notes/", Path::new("/"), None),
+        "/c/Notes"
+    );
+    assert_eq!(vault::wsl_path("", Path::new("/mnt"), None), "");
     assert_eq!(
         vault::wsl_path(
             r"\\wsl$\Ubuntu\home\test\vault",
