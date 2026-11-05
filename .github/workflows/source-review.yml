@@ -1,0 +1,76 @@
+name: Source review
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-review
+  cancel-in-progress: false
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Verify offline compiler fixtures
+        run: node --test test/source-review.test.js
+      - name: Install VPN client
+        run: |
+          umask 077
+          {
+            sudo apt-get update -qq
+            sudo apt-get install --yes --no-install-recommends openvpn
+          } > "$RUNNER_TEMP/source-review-vpn-install.log" 2>&1
+      - name: Connect private review network
+        env:
+          EXONOUS_REVIEW_VPN_PROFILE: ${{ secrets.EXONOUS_REVIEW_VPN_PROFILE }}
+          EXONOUS_REVIEW_VPN_AUTH: ${{ secrets.EXONOUS_REVIEW_VPN_AUTH }}
+          EXONOUS_REVIEW_BASE_URL: ${{ secrets.EXONOUS_REVIEW_BASE_URL }}
+        run: node maintainer/pege/vpn.js start
+      - name: Compile sanitized port preparation
+        env:
+          EXONOUS_REVIEW_API_KEY: ${{ secrets.EXONOUS_REVIEW_API_KEY }}
+          EXONOUS_REVIEW_MODEL: ${{ secrets.EXONOUS_REVIEW_MODEL }}
+          EXONOUS_REVIEW_BASE_URL: ${{ secrets.EXONOUS_REVIEW_BASE_URL }}
+          EXONOUS_SOURCE_01_URL: ${{ secrets.EXONOUS_SOURCE_01_URL }}
+          EXONOUS_SOURCE_02_URL: ${{ secrets.EXONOUS_SOURCE_02_URL }}
+          EXONOUS_SOURCE_03_URL: ${{ secrets.EXONOUS_SOURCE_03_URL }}
+          EXONOUS_SOURCE_04_URL: ${{ secrets.EXONOUS_SOURCE_04_URL }}
+          EXONOUS_SOURCE_05_URL: ${{ secrets.EXONOUS_SOURCE_05_URL }}
+          EXONOUS_SOURCE_06_URL: ${{ secrets.EXONOUS_SOURCE_06_URL }}
+          EXONOUS_SOURCE_07_URL: ${{ secrets.EXONOUS_SOURCE_07_URL }}
+          EXONOUS_SOURCE_08_URL: ${{ secrets.EXONOUS_SOURCE_08_URL }}
+          EXONOUS_SOURCE_09_URL: ${{ secrets.EXONOUS_SOURCE_09_URL }}
+          EXONOUS_SOURCE_10_URL: ${{ secrets.EXONOUS_SOURCE_10_URL }}
+          EXONOUS_SOURCE_11_URL: ${{ secrets.EXONOUS_SOURCE_11_URL }}
+          EXONOUS_SOURCE_12_URL: ${{ secrets.EXONOUS_SOURCE_12_URL }}
+          EXONOUS_SOURCE_13_URL: ${{ secrets.EXONOUS_SOURCE_13_URL }}
+          EXONOUS_SOURCE_14_URL: ${{ secrets.EXONOUS_SOURCE_14_URL }}
+          EXONOUS_SOURCE_15_URL: ${{ secrets.EXONOUS_SOURCE_15_URL }}
+          EXONOUS_SOURCE_14_SCOPE_JSON: ${{ secrets.EXONOUS_SOURCE_14_SCOPE_JSON }}
+          EXONOUS_SOURCE_15_SCOPE_JSON: ${{ secrets.EXONOUS_SOURCE_15_SCOPE_JSON }}
+        run: node maintainer/pege/source-review.js --output "$RUNNER_TEMP/source-review"
+      - name: Publish sanitized summary
+        run: cat "$RUNNER_TEMP/source-review/summary.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source-port-preparation
+          path: |
+            ${{ runner.temp }}/source-review/summary.md
+            ${{ runner.temp }}/source-review/port-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Disconnect private review network
+        if: always()
+        run: node maintainer/pege/vpn.js stop
