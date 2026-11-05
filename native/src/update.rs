@@ -452,7 +452,7 @@ struct Temporary {
 impl Temporary {
     fn new(parent: &Path) -> Result<Self> {
         let path = parent.join(format!("exonous-update-{}", runtime::nonce()));
-        let mut builder = fs::DirBuilder::new();
+        let builder = &mut fs::DirBuilder::new();
         #[cfg(unix)]
         {
             use std::os::unix::fs::DirBuilderExt;

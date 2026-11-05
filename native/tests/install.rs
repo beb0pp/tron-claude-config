@@ -29,13 +29,31 @@ fn native_update_activates_verified_release_through_real_candidate_process() {
         output,
         flate2::Compression::fast(),
     ));
+    tar.sparse(false);
     tar.append_path_with_name(env!("CARGO_BIN_EXE_exonous"), "exonous")
         .unwrap();
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     tar.append_dir_all("assets", root.join("assets")).unwrap();
+    let sparse = temp.path().join("sparse-asset");
+    fs::File::create(&sparse).unwrap().set_len(65536).unwrap();
+    tar.append_path_with_name(&sparse, "assets/sparse-asset")
+        .unwrap();
     tar.append_path_with_name(root.join("package.json"), "package.json")
         .unwrap();
     tar.into_inner().unwrap().finish().unwrap();
+    let mut release = tar::Archive::new(flate2::read::GzDecoder::new(
+        fs::File::open(&archive).unwrap(),
+    ));
+    for entry in release.entries().unwrap() {
+        let entry = entry.unwrap();
+        let kind = entry.header().entry_type();
+        assert!(
+            kind.is_file() || kind.is_dir(),
+            "release fixture contains unsupported entry {:?}: {:?}",
+            kind,
+            entry.path().unwrap()
+        );
+    }
     let sum = format!("{:x}", Sha256::digest(fs::read(&archive).unwrap()));
     let checksums = temp.path().join("SHA256SUMS");
     fs::write(&checksums, format!("{sum}  {filename}\n")).unwrap();
@@ -346,7 +364,13 @@ fn all_adapters_preserve_user_config_and_native_commands_use_absolute_binary() {
         .iter()
         .find(|entry| entry.to_string().contains("hook pyle"))
         .unwrap();
-    assert!(native.to_string().contains("/.claude/exonous/bin/"));
+    assert_eq!(
+        native["hooks"][0]["command"],
+        format!(
+            "\"{}\" hook pyle --adapter claude",
+            fixture.installed_binary().display()
+        )
+    );
     assert!(!native.to_string().contains("pyle.cjs"));
     let gemini = json_file(&fixture.home.join(".gemini/settings.json"));
     assert_eq!(gemini["mcpServers"]["atlas"]["command"], "graph");
