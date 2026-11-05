@@ -44,6 +44,21 @@ jobs:
           cargo +1.95.0 clippy --locked --all-targets -- -D warnings
           cargo +1.95.0 test --locked
           node native/tests/parity.cjs
+      - name: Verify automatic native installation
+        env:
+          RUSTUP_TOOLCHAIN: '1.95.0'
+        run: |
+          python3 maintainer/test-bootstrap.py
+          binary=target/debug/exonous
+          if [ '${{ runner.os }}' = Windows ]; then binary="$binary.exe"; fi
+          python3 maintainer/test-bootstrap.py --binary "$binary"
+      - name: Verify PowerShell 7 bootstrap compatibility
+        if: runner.os == 'Windows'
+        env:
+          RUSTUP_TOOLCHAIN: '1.95.0'
+        run: |
+          python3 maintainer/test-bootstrap.py --powershell pwsh
+          python3 maintainer/test-bootstrap.py --powershell pwsh --binary target/debug/exonous.exe
 
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
@@ -104,7 +119,7 @@ jobs:
       - uses: Vampire/setup-wsl@4c48163d9f981914dd8caa0fc335fe19cca5bff4 # v7.2.0
         with:
           distribution: Ubuntu-24.04
-          additional-packages: nodejs git
+          additional-packages: nodejs git python3
 
       - name: Test
         shell: wsl-bash {0}
@@ -121,6 +136,7 @@ jobs:
           export EXONOUS_HOME="$work/exonous-home" HOME="$work/home" EXONOUS_NO_UPDATE=1 GIT_CONFIG_GLOBAL=/dev/null
           mkdir -p "$EXONOUS_HOME" "$HOME"
           node --test test/*.test.js
+          python3 maintainer/test-bootstrap.py
 
   version:
     name: version bump
@@ -219,6 +235,7 @@ jobs:
           binary='target/${{ matrix.target }}/release/exonous'
           if [ '${{ runner.os }}' = Windows ]; then binary="$binary.exe"; fi
           python3 maintainer/package-native.py --binary "$binary" --target '${{ matrix.target }}' --output dist
+          python3 maintainer/test-bootstrap.py --binary "$binary" --target '${{ matrix.target }}'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-${{ matrix.target }}
