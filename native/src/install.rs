@@ -1778,7 +1778,8 @@ fn execute_with(plan: &Plan<'_>, write: &mut dyn FnMut(&Path, &[u8]) -> Result<(
                         .map_err(|_| "cannot set installed executable mode")?;
                 }
             } else if path.exists() {
-                fs::remove_file(&path).map_err(|_| "cannot remove owned file")?;
+                fs::remove_file(&path)
+                    .map_err(|error| format!("cannot remove owned file {relative}: {error}"))?;
                 applied.push(relative);
             }
         }

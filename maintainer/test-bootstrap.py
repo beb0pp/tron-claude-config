@@ -297,7 +297,7 @@ def real_bundle(binary, target):
             if os.name == "nt":
                 command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", *command]
             result = subprocess.run(command, cwd=case.work, env=case.env, text=True, encoding="utf-8", capture_output=True)
-            assert result.returncode == 0, result.stdout + result.stderr
+            assert result.returncode == 0, f"launcher args={args!r}\n{result.stdout}{result.stderr}"
             if args[0] == "doctor":
                 report = json.loads(result.stdout)
                 assert report["runtime"] == "rust" and report["complete"] is True, report

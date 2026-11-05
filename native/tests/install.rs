@@ -403,6 +403,59 @@ fn all_adapters_preserve_user_config_and_native_commands_use_absolute_binary() {
 }
 
 #[test]
+fn installed_binary_can_reinstall_doctor_and_uninstall_its_owned_runtime() {
+    let mut fixture = Fixture::new();
+    fixture.assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
+    fs::copy(env!("CARGO_BIN_EXE_exonous"), &fixture.binary).unwrap();
+    fixture.install(&["--tools", "claude"]).unwrap();
+    let installed = fixture.installed_binary();
+    assert_ne!(installed, fixture.binary);
+    for args in [
+        vec!["install", "--tools", "claude", "--quiet"],
+        vec!["doctor", "--json"],
+    ] {
+        let output = std::process::Command::new(&installed)
+            .args(&args)
+            .current_dir(&fixture.home)
+            .env("EXONOUS_HOME", &fixture.home)
+            .env("EXONOUS_ASSETS", &fixture.assets)
+            .env("EXONOUS_NO_FORWARD", "1")
+            .env("EXONOUS_NO_UPDATE", "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{args:?}: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let edited = fixture.home.join(".claude/rules/nomos.md");
+    write(&edited, "My edited rule\n");
+    let foreign = fixture.home.join(".claude/exonous/agent-roles/custom.md");
+    write(&foreign, "My role\n");
+    let output = std::process::Command::new(&installed)
+        .args(["uninstall", "--yes"])
+        .current_dir(&fixture.home)
+        .env("EXONOUS_HOME", &fixture.home)
+        .env("EXONOUS_ASSETS", &fixture.assets)
+        .env("EXONOUS_NO_FORWARD", "1")
+        .env("EXONOUS_NO_UPDATE", "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "uninstall: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!installed.exists());
+    assert!(!fixture.home.join(".claude/exonous/installed.json").exists());
+    assert_eq!(fs::read_to_string(edited).unwrap(), "My edited rule\n");
+    assert_eq!(fs::read_to_string(foreign).unwrap(), "My role\n");
+}
+
+#[test]
 fn invalid_json_aborts_before_any_install_writes_and_edited_files_survive_uninstall() {
     let fixture = Fixture::new();
     write(
