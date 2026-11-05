@@ -71,4 +71,3 @@ path = "native/tests/migrate.rs"
 [[test]]
 name = "skill_memory"
 path = "native/tests/skill_memory.rs"
-
