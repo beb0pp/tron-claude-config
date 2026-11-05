@@ -14,6 +14,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  native:
+    name: native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Keep native assets LF
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: Install Rust checks
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
+      - name: Check native runtime
+        env:
+          GIT_CONFIG_GLOBAL: /dev/null
+        run: |
+          cargo +1.95.0 fmt --all --check
+          cargo +1.95.0 clippy --locked --all-targets -- -D warnings
+          cargo +1.95.0 test --locked
+          node native/tests/parity.cjs
+
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
@@ -109,7 +140,7 @@ jobs:
   release-checks:
     name: release checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, wsl]
+    needs: [native, test, wsl]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -132,14 +163,72 @@ jobs:
 
       - name: Pre-release checks
         if: steps.version.outputs.new == 'true'
+        env:
+          EXONOUS_SOURCE_01_URL: ${{ secrets.EXONOUS_SOURCE_01_URL }}
+          EXONOUS_SOURCE_02_URL: ${{ secrets.EXONOUS_SOURCE_02_URL }}
+          EXONOUS_SOURCE_03_URL: ${{ secrets.EXONOUS_SOURCE_03_URL }}
+          EXONOUS_SOURCE_04_URL: ${{ secrets.EXONOUS_SOURCE_04_URL }}
+          EXONOUS_SOURCE_05_URL: ${{ secrets.EXONOUS_SOURCE_05_URL }}
+          EXONOUS_SOURCE_06_URL: ${{ secrets.EXONOUS_SOURCE_06_URL }}
+          EXONOUS_SOURCE_07_URL: ${{ secrets.EXONOUS_SOURCE_07_URL }}
+          EXONOUS_SOURCE_08_URL: ${{ secrets.EXONOUS_SOURCE_08_URL }}
+          EXONOUS_SOURCE_09_URL: ${{ secrets.EXONOUS_SOURCE_09_URL }}
+          EXONOUS_SOURCE_10_URL: ${{ secrets.EXONOUS_SOURCE_10_URL }}
+          EXONOUS_SOURCE_11_URL: ${{ secrets.EXONOUS_SOURCE_11_URL }}
+          EXONOUS_SOURCE_12_URL: ${{ secrets.EXONOUS_SOURCE_12_URL }}
+          EXONOUS_SOURCE_13_URL: ${{ secrets.EXONOUS_SOURCE_13_URL }}
+          EXONOUS_SOURCE_14_URL: ${{ secrets.EXONOUS_SOURCE_14_URL }}
+          EXONOUS_SOURCE_15_URL: ${{ secrets.EXONOUS_SOURCE_15_URL }}
         run: |
           bash maintainer/e2e-smoke.sh
           npm run pege:originality
 
-  # Only this job can write, and it runs nothing but the tag step.
-  release:
-    name: release tag
+  native-bundles:
+    name: bundle (${{ matrix.target }})
     needs: release-checks
+    if: needs.release-checks.outputs.new == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Keep release assets LF
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build native release
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          cargo +1.95.0 build --release --locked --target '${{ matrix.target }}'
+          binary='target/${{ matrix.target }}/release/exonous'
+          if [ '${{ runner.os }}' = Windows ]; then binary="$binary.exe"; fi
+          python3 maintainer/package-native.py --binary "$binary" --target '${{ matrix.target }}' --output dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-${{ matrix.target }}
+          path: dist/*
+          retention-days: 7
+          if-no-files-found: error
+
+  release:
+    name: release native bundles
+    needs: [release-checks, native-bundles]
     if: needs.release-checks.outputs.new == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -156,3 +245,15 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           node maintainer/release.js tag
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: dist
+      - name: Publish verified bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="$(node -p "require('./package.json').version")"
+          cat dist/*.sha256 > dist/SHA256SUMS
+          gh release create "v$v" dist/*.tar.gz dist/SHA256SUMS --verify-tag --title "Exonous v$v" --generate-notes
