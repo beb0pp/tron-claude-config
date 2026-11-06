@@ -119,7 +119,7 @@ jobs:
       - uses: Vampire/setup-wsl@4c48163d9f981914dd8caa0fc335fe19cca5bff4 # v7.2.0
         with:
           distribution: Ubuntu-24.04
-          additional-packages: nodejs git python3
+          additional-packages: nodejs npm git python3
 
       - name: Test
         shell: wsl-bash {0}
@@ -156,7 +156,7 @@ jobs:
   release-checks:
     name: release checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [native, test, wsl]
+    needs: [native, test, wsl, npm-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -201,8 +201,6 @@ jobs:
 
   native-bundles:
     name: bundle (${{ matrix.target }})
-    needs: release-checks
-    if: needs.release-checks.outputs.new == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -234,43 +232,104 @@ jobs:
           cargo +1.95.0 build --release --locked --target '${{ matrix.target }}'
           binary='target/${{ matrix.target }}/release/exonous'
           if [ '${{ runner.os }}' = Windows ]; then binary="$binary.exe"; fi
-          python3 maintainer/package-native.py --binary "$binary" --target '${{ matrix.target }}' --output dist
-          python3 maintainer/test-bootstrap.py --binary "$binary" --target '${{ matrix.target }}'
+          mkdir -p 'dist/${{ matrix.target }}'
+          cp "$binary" 'dist/${{ matrix.target }}/'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-${{ matrix.target }}
-          path: dist/*
+          path: dist/
           retention-days: 7
           if-no-files-found: error
 
-  release:
-    name: release native bundles
-    needs: [release-checks, native-bundles]
-    if: needs.release-checks.outputs.new == 'true'
+  npm-package:
+    name: assemble native npm package
+    needs: native-bundles
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 0
-
-      # The quanthub mirror copies new tags within the hour (its own sync workflow).
-      - name: Tag the release
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          node maintainer/release.js tag
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: native-*
           merge-multiple: true
+          path: built-native
+      - name: Assemble one public package
+        run: |
+          python3 maintainer/test-package-native.py
+          python3 maintainer/test-publish-native.py
+          python3 maintainer/package-native.py --binaries built-native --output dist --git-head '${{ github.sha }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npm-package
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  npm-smoke:
+    name: npm install (${{ matrix.os }})
+    needs: npm-package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Keep native assets LF
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: npm-package
           path: dist
-      - name: Publish verified bundles
+      - name: Exercise exact packed npm package and Node-free bootstrap
+        run: |
+          package="$(find dist -name '*.tgz' -print)"
+          python3 maintainer/test-bootstrap.py --package "$package"
+          if [ '${{ runner.os }}' = Windows ]; then python3 maintainer/test-bootstrap.py --powershell pwsh --package "$package"; fi
+
+  release:
+    name: publish npm then release notes
+    needs: [release-checks, npm-package, npm-smoke]
+    if: needs.release-checks.outputs.new == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: npm-package
+          path: dist
+      - name: Publish or verify exact npm package
+        run: |
+          npm install --global npm@11.6.2 --ignore-scripts
+          package="$(find dist -name '*.tgz' -print)"
+          python3 maintainer/publish-native.py --package "$package" --publication dist/publication.json --source '${{ github.sha }}'
+      - name: Tag verified npm release and publish notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          node maintainer/release.js tag
           v="$(node -p "require('./package.json').version")"
-          cat dist/*.sha256 > dist/SHA256SUMS
-          gh release create "v$v" dist/*.tar.gz dist/SHA256SUMS --verify-tag --title "Exonous v$v" --generate-notes
+          if ! gh release view "v$v" >/dev/null 2>&1; then gh release create "v$v" --verify-tag --title "Exonous v$v" --generate-notes; fi
