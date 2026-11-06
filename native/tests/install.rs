@@ -479,6 +479,7 @@ fn windows_launcher_preserves_failed_status_and_uninstalls_itself() {
     let before = fs::read(&ledger).unwrap();
     let mut matrix = Vec::new();
     for (name, tail) in [
+        ("leave-batch", "(goto) 2>nul & {native}"),
         ("same-line", "{native} & exit /b"),
         ("call", "{native} & call exit /b %%errorlevel%%"),
         ("block", "(\r\n{native}\r\nexit /b\r\n)"),
