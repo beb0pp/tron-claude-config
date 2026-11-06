@@ -25,24 +25,15 @@ jobs:
           node-version: '22'
       - name: Verify offline compiler fixtures
         run: node --test test/source-review.test.js
-      - name: Install VPN client
+      - name: Install pinned Claude Code
         run: |
-          umask 077
-          {
-            sudo apt-get update -qq
-            sudo apt-get install --yes --no-install-recommends openvpn
-          } > "$RUNNER_TEMP/source-review-vpn-install.log" 2>&1
-      - name: Connect private review network
-        env:
-          EXONOUS_REVIEW_VPN_PROFILE: ${{ secrets.EXONOUS_REVIEW_VPN_PROFILE }}
-          EXONOUS_REVIEW_VPN_AUTH: ${{ secrets.EXONOUS_REVIEW_VPN_AUTH }}
-          EXONOUS_REVIEW_BASE_URL: ${{ secrets.EXONOUS_REVIEW_BASE_URL }}
-        run: node maintainer/pege/vpn.js start
+          npm install --global --prefix "$RUNNER_TEMP/source-review-cli" --no-audit --no-fund @anthropic-ai/claude-code@2.1.318
+          printf '%s/bin\n' "$RUNNER_TEMP/source-review-cli" >> "$GITHUB_PATH"
       - name: Compile sanitized port preparation
         env:
-          EXONOUS_REVIEW_API_KEY: ${{ secrets.EXONOUS_REVIEW_API_KEY }}
-          EXONOUS_REVIEW_MODEL: ${{ secrets.EXONOUS_REVIEW_MODEL }}
-          EXONOUS_REVIEW_BASE_URL: ${{ secrets.EXONOUS_REVIEW_BASE_URL }}
+          EXONOUS_REVIEW_BACKEND: claude
+          EXONOUS_REVIEW_MODEL: sonnet
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           EXONOUS_SOURCE_01_URL: ${{ secrets.EXONOUS_SOURCE_01_URL }}
           EXONOUS_SOURCE_02_URL: ${{ secrets.EXONOUS_SOURCE_02_URL }}
           EXONOUS_SOURCE_03_URL: ${{ secrets.EXONOUS_SOURCE_03_URL }}
@@ -71,6 +62,3 @@ jobs:
             ${{ runner.temp }}/source-review/port-manifest.json
           if-no-files-found: error
           retention-days: 14
-      - name: Disconnect private review network
-        if: always()
-        run: node maintainer/pege/vpn.js stop
