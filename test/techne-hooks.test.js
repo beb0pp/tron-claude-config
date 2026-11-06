@@ -213,7 +213,7 @@ test('config guard covers supported config extensions and keeps payload handling
 });
 
 test('stop checks match exact diagnostic paths after normalizing separators and relative segments', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'techne diagnostics '));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), process.platform === 'win32' ? 'techne-diagnostics-' : 'techne diagnostics '));
   fs.mkdirSync(path.join(dir, 'node_modules', '.bin'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'tsconfig.json'), '{}');
   const output = [
@@ -224,8 +224,9 @@ test('stop checks match exact diagnostic paths after normalizing separators and 
     'src\\other.ts(4,1): error TS2304: windows separators',
     'src/./other.ts(5,1): error TS2304: normalized nested',
   ].join('\n');
-  const tsc = path.join(dir, 'node_modules', '.bin', 'tsc');
+  const tsc = path.join(dir, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.js' : 'tsc');
   fs.writeFileSync(tsc, `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(output)}); process.exitCode = 2;\n`, { mode: 0o755 });
+  if (process.platform === 'win32') fs.writeFileSync(path.join(dir, 'node_modules', '.bin', 'tsc.cmd'), `@"${process.execPath}" "${tsc}" %*\r\n`);
   for (const [index, relative] of ['index.ts', 'src/other.ts'].entries()) {
     const file = path.join(dir, relative);
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -246,4 +247,18 @@ test('stop checks match exact diagnostic paths after normalizing separators and 
     }
     assert.strictEqual(hook('stop:checks', { cwd: dir, session_id: session }).stderr, '', 'list is consumed');
   }
+});
+
+
+test('stop checks exclude paths unsafe for Windows command shims', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'techne unsafe path '));
+  const file = path.join(dir, 'index.ts');
+  fs.writeFileSync(file, 'console.log("tracked");\n');
+  const session = `unsafe-path-${process.pid}`;
+  assert.strictEqual(hook('post:edit-tracker', { cwd: dir, session_id: session, tool_input: { file_path: file } }).code, 0);
+  const res = hook('stop:checks', { cwd: dir, session_id: session });
+  assert.strictEqual(res.code, 0);
+  if (process.platform === 'win32') assert.strictEqual(res.stderr, '', 'unsafe paths are excluded before invoking command shims');
+  else assert.match(res.stderr, /console\.log left in edited files/, 'POSIX permits paths containing spaces');
+  assert.strictEqual(hook('stop:checks', { cwd: dir, session_id: session }).stderr, '', 'excluded paths are consumed too');
 });
