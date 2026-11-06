@@ -162,6 +162,7 @@ dependencies = [
  "tempfile",
  "toml",
  "unicode-normalization",
+ "windows-sys",
 ]
 
 [[package]]
