@@ -43,10 +43,8 @@ function Get-ReleaseResponse([string] $Url, [string] $Method) {
     $Uri = [Uri] $Url
     $Path = $null
     $Length = 0
-    {
-        $Path = Join-Path $env:FIXTURE_TRANSPORT ([IO.Path]::GetFileName($Uri.AbsolutePath))
-        $Length = (Get-Item -LiteralPath $Path).Length
-    }
+    $Path = Join-Path $env:FIXTURE_TRANSPORT ([IO.Path]::GetFileName($Uri.AbsolutePath))
+    $Length = (Get-Item -LiteralPath $Path).Length
     $Response = [pscustomobject] @{ ResponseUri = $Uri; ContentLength = $Length; FixturePath = $Path }
     $Response | Add-Member -MemberType ScriptMethod -Name GetResponseStream -Value { [IO.File]::OpenRead($this.FixturePath) }
     $Response | Add-Member -MemberType ScriptMethod -Name Close -Value {}
