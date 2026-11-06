@@ -235,11 +235,12 @@ function shellFixture() {
   const home = path.join(fx.dir, 'home');
   fs.mkdirSync(home);
   const shell = process.platform === 'win32' ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'bin', 'sh.exe') : 'sh';
-  const env = { ...process.env, HOME: home.replace(/\\/g, '/'), IMPECCABLE_HOME: cache.replace(/\\/g, '/'), PATH: `${tools}${path.delimiter}${process.env.PATH}`, ENGINE_MARKER: path.join(fx.dir, 'executed').replace(/\\/g, '/') };
+  const env = { ...process.env, HOME: home.replace(/\\/g, '/'), IMPECCABLE_HOME: cache.replace(/\\/g, '/'), PATH: `${tools}${path.delimiter}${process.env.PATH}`, FIXTURE_TOOLS: tools.replace(/\\/g, '/'), ENGINE_MARKER: path.join(fx.dir, 'executed').replace(/\\/g, '/') };
   delete env.IMPECCABLE_BIN;
   delete env.IMPECCABLE_LAUNCHER_PROBE;
-  const launch = (extra = {}, args = ['context', 'a b']) => spawnSync(shell, [path.join(fx.scripts, 'impeccable'), ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
-  return { ...fx, bytes, manifest, tools, cache, cached, home, env, shell, launch };
+  const shellArgs = ['-c', process.platform === 'win32' ? 'PATH="$(cygpath -u "$FIXTURE_TOOLS"):$PATH"; export PATH; exec sh "$@"' : 'PATH="$FIXTURE_TOOLS:$PATH"; export PATH; exec sh "$@"', 'fixture'];
+  const launch = (extra = {}, args = ['context', 'a b']) => spawnSync(shell, [...shellArgs, path.join(fx.scripts, 'impeccable'), ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
+  return { ...fx, bytes, manifest, tools, cache, cached, home, env, shell, shellArgs, launch };
 }
 
 test('POSIX launcher never executes automatic candidates before authentication', () => {
@@ -287,7 +288,7 @@ test('POSIX downloads authenticate local pins and clean private staging on failu
   fs.writeFileSync(path.join(fx.tools, 'curl'), '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\nshift\ncp "$DOWNLOAD_FIXTURE" "$1"\n', { mode: 0o755 });
   const env = { ...fx.env, DOWNLOAD_FIXTURE: source.replace(/\\/g, '/') };
   const execute = () => new Promise((resolve, reject) => {
-    const child = spawn(fx.shell, [path.join(fx.scripts, 'impeccable'), 'context', 'a b'], { env });
+    const child = spawn(fx.shell, [...fx.shellArgs, path.join(fx.scripts, 'impeccable'), 'context', 'a b'], { env });
     let stdout = ''; let stderr = '';
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
