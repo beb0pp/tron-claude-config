@@ -455,6 +455,50 @@ fn installed_binary_can_reinstall_doctor_and_uninstall_its_owned_runtime() {
     assert_eq!(fs::read_to_string(foreign).unwrap(), "My role\n");
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_launcher_preserves_failed_status_and_uninstalls_itself() {
+    let mut fixture = Fixture::new();
+    fixture.assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
+    fs::copy(env!("CARGO_BIN_EXE_exonous"), &fixture.binary).unwrap();
+    fixture.install(&["--tools", "claude"]).unwrap();
+    let installed = fixture.installed_binary();
+    let launcher = fixture.home.join(".local/bin/exonous.cmd");
+    let run = |executable: &Path, args: &[&str]| {
+        std::process::Command::new(executable)
+            .args(args)
+            .current_dir(&fixture.home)
+            .env("EXONOUS_HOME", &fixture.home)
+            .env("EXONOUS_ASSETS", &fixture.assets)
+            .env("EXONOUS_NO_FORWARD", "1")
+            .env("EXONOUS_NO_UPDATE", "1")
+            .output()
+            .unwrap()
+    };
+    let ledger = fixture.home.join(".claude/exonous/installed.json");
+    let before = fs::read(&ledger).unwrap();
+    for args in [["uninstall"], ["unknown-command"]] {
+        let direct = run(&installed, &args);
+        let failed = run(&launcher, &args);
+        assert!(!direct.status.success());
+        assert_eq!(failed.status.code(), direct.status.code());
+        assert_eq!(failed.stderr, direct.stderr);
+    }
+    assert_eq!(fs::read(&ledger).unwrap(), before);
+    assert!(launcher.exists());
+    assert!(installed.exists());
+    let output = run(&launcher, &["uninstall", "--yes"]);
+    assert!(
+        output.status.success(),
+        "launcher uninstall: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!launcher.exists());
+    assert!(!installed.exists());
+    assert!(!ledger.exists());
+}
+
 #[test]
 fn invalid_json_aborts_before_any_install_writes_and_edited_files_survive_uninstall() {
     let fixture = Fixture::new();
