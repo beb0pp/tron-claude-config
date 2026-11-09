@@ -14,52 +14,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  native:
-    name: native (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Keep native assets LF
-        run: git config --global core.autocrlf false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
-        with:
-          node-version: '22'
-      - name: Install Rust checks
-        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
-      - name: Check native runtime
-        env:
-          GIT_CONFIG_GLOBAL: /dev/null
-        run: |
-          cargo +1.95.0 fmt --all --check
-          cargo +1.95.0 clippy --locked --all-targets -- -D warnings
-          cargo +1.95.0 test --locked
-          node native/tests/parity.cjs
-      - name: Verify automatic native installation
-        env:
-          RUSTUP_TOOLCHAIN: '1.95.0'
-        run: |
-          python3 maintainer/test-bootstrap.py
-          binary=target/debug/exonous
-          if [ '${{ runner.os }}' = Windows ]; then binary="$binary.exe"; fi
-          python3 maintainer/test-bootstrap.py --binary "$binary"
-      - name: Verify PowerShell 7 bootstrap compatibility
-        if: runner.os == 'Windows'
-        env:
-          RUSTUP_TOOLCHAIN: '1.95.0'
-        run: |
-          python3 maintainer/test-bootstrap.py --powershell pwsh
-          python3 maintainer/test-bootstrap.py --powershell pwsh --binary target/debug/exonous.exe
-
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
@@ -136,7 +90,6 @@ jobs:
           export EXONOUS_HOME="$work/exonous-home" HOME="$work/home" EXONOUS_NO_UPDATE=1 GIT_CONFIG_GLOBAL=/dev/null
           mkdir -p "$EXONOUS_HOME" "$HOME"
           node --test test/*.test.js
-          python3 maintainer/test-bootstrap.py
 
   version:
     name: version bump
@@ -156,7 +109,7 @@ jobs:
   release-checks:
     name: release checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [native, test, wsl, npm-smoke]
+    needs: [test, wsl, npm-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -199,67 +152,21 @@ jobs:
           bash maintainer/e2e-smoke.sh
           npm run pege:originality
 
-  native-bundles:
-    name: bundle (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-          - os: macos-latest
-            target: aarch64-apple-darwin
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Keep release assets LF
-        run: git config --global core.autocrlf false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - name: Build native release
-        run: |
-          rustup toolchain install 1.95.0 --profile minimal
-          cargo +1.95.0 build --release --locked --target '${{ matrix.target }}'
-          binary='target/${{ matrix.target }}/release/exonous'
-          if [ '${{ runner.os }}' = Windows ]; then binary="$binary.exe"; fi
-          mkdir -p 'dist/${{ matrix.target }}'
-          cp "$binary" 'dist/${{ matrix.target }}/'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: native-${{ matrix.target }}
-          path: dist/
-          retention-days: 7
-          if-no-files-found: error
-
   npm-package:
-    name: assemble native npm package
-    needs: native-bundles
+    name: pack npm package
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          pattern: native-*
-          merge-multiple: true
-          path: built-native
-      - name: Assemble one public package
+          node-version: '22'
+      - name: Pack the exact tarball every later job uses
         run: |
-          python3 maintainer/test-package-native.py
-          python3 maintainer/test-publish-native.py
-          python3 maintainer/package-native.py --binaries built-native --output dist --git-head '${{ github.sha }}'
+          mkdir -p dist
+          npm pack --pack-destination dist --ignore-scripts
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: npm-package
@@ -275,16 +182,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     defaults:
       run:
         shell: bash
     steps:
-      - name: Keep native assets LF
-        run: git config --global core.autocrlf false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22'
@@ -292,11 +194,23 @@ jobs:
         with:
           name: npm-package
           path: dist
-      - name: Exercise exact packed npm package and Node-free bootstrap
+      - name: Install the packed tarball globally and wire a temp home
+        env:
+          EXONOUS_HOME: ${{ runner.temp }}/exonous-home
+          HOME: ${{ runner.temp }}/home
+          USERPROFILE: ${{ runner.temp }}/home
+          EXONOUS_NO_UPDATE: '1'
+          GIT_CONFIG_GLOBAL: /dev/null
         run: |
+          set -euo pipefail
           package="$(find dist -name '*.tgz' -print)"
-          python3 maintainer/test-bootstrap.py --package "$package"
-          if [ '${{ runner.os }}' = Windows ]; then python3 maintainer/test-bootstrap.py --powershell pwsh --package "$package"; fi
+          prefix="$RUNNER_TEMP/npm-prefix"
+          mkdir -p "$EXONOUS_HOME" "$HOME" "$prefix"
+          npm install --global --prefix "$prefix" --ignore-scripts --no-audit --no-fund "$package"
+          if [ '${{ runner.os }}' = Windows ]; then bin="$prefix/exonous.cmd"; else bin="$prefix/bin/exonous"; fi
+          "$bin" help | grep -q 'pr create'
+          "$bin" install --quiet --tools claude
+          "$bin" gate --selftest claude
 
   release:
     name: publish npm then release notes
@@ -319,11 +233,18 @@ jobs:
         with:
           name: npm-package
           path: dist
-      - name: Publish or verify exact npm package
+      - name: Publish or verify the exact packed tarball
         run: |
+          set -euo pipefail
           npm install --global npm@11.6.2 --ignore-scripts
-          package="$(find dist -name '*.tgz' -print)"
-          python3 maintainer/publish-native.py --package "$package" --publication dist/publication.json --source '${{ github.sha }}'
+          v="$(node -p "require('./package.json').version")"
+          package="dist/exonous-$v.tgz"
+          local_sri="sha512-$(openssl dgst -sha512 -binary "$package" | base64 -w0)"
+          if ! npm view "exonous@$v" version >/dev/null 2>&1; then
+            npm publish "$package" --ignore-scripts --access public --provenance
+          fi
+          published_sri="$(npm view "exonous@$v" dist.integrity)"
+          if [ "$published_sri" != "$local_sri" ]; then echo "exonous@$v on npm differs from the validated tarball" >&2; exit 1; fi
       - name: Tag verified npm release and publish notes
         env:
           GH_TOKEN: ${{ github.token }}
