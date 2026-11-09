@@ -203,7 +203,7 @@ jobs:
           GIT_CONFIG_GLOBAL: /dev/null
         run: |
           set -euo pipefail
-          package="$(find dist -name '*.tgz' -print)"
+          package="$(find ./dist -name '*.tgz' -print)"
           prefix="$RUNNER_TEMP/npm-prefix"
           mkdir -p "$EXONOUS_HOME" "$HOME" "$prefix"
           npm install --global --prefix "$prefix" --ignore-scripts --no-audit --no-fund "$package"
@@ -238,7 +238,7 @@ jobs:
           set -euo pipefail
           npm install --global npm@11.6.2 --ignore-scripts
           v="$(node -p "require('./package.json').version")"
-          package="dist/exonous-$v.tgz"
+          package="./dist/exonous-$v.tgz"
           local_sri="sha512-$(openssl dgst -sha512 -binary "$package" | base64 -w0)"
           if ! npm view "exonous@$v" version >/dev/null 2>&1; then
             npm publish "$package" --ignore-scripts --access public --provenance
