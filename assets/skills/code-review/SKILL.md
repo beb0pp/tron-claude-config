@@ -126,7 +126,7 @@ Runs when the PR has review comments (human or bot, inline or top-level): `gh ap
 4. **Pertinent:** smallest edit in its own commit `fix: <what> (review)`, run the nearest test (new failing-then-passing test when behavior changes) and the type-check, then reply.
 5. **Not pertinent:** change nothing; reply with the concrete reason (code path, test or rule).
 6. **Product or architecture call:** escalate to the user, do not guess.
-7. **Voice:** the PR owner's. First person, informal, technical, senior-dev vocabulary without overdoing it, same language as the comment. Short: what changed and where (commit hash, file) or why not. No AI mention, no footer, no pleasantries, no restating the comment.
+7. **Voice:** the PR owner's. First person, informal, technical, senior-dev vocabulary without overdoing it, in the language of the person being answered (the last comment or question in that thread: Portuguese gets Portuguese, English gets English), never the PR's or the code's language; follow-ups keep it. Short: what changed and where (commit hash, file) or why not. No AI mention, no footer, no pleasantries, no restating the comment.
 8. **Reply in place, once:** inline thread via `gh api repos/<o>/<r>/pulls/<n>/comments/<id>/replies -f body=...`; top-level via `gh pr comment <n> --body-file <f>`. List existing replies first so a retry never duplicates one.
 
 Example: "Boa, tinha passado batido. O `load()` saía antes do `++seq` e uma resposta antiga podia sobrescrever o símbolo novo. Corrigi em 427628d e deixei um teste pinando o caso."
